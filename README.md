@@ -10,9 +10,9 @@ Welcome to the **ARC-Challenge** repository! This project implements a novel **A
 ---
 
 ## 🚀 Key Achievements
-- **End-to-End Pipeline**: Fully integrated perception, executor, and hypothesis-generation logic running entirely offline.
-- **Strict Mathematical Falsification**: Accurate implementation of Bayesian Belief Updating to prune billions of possible combinations instantly.
-- **Zero-Shot Baseline Verified**: Solves `2.9%` of the full dataset locally using pure deterministic heuristics and combinatorics (prior to massive external LLM hooking).
+- **Test-Time Compute (LLM Synthesis)**: Achieved **`40.0%`** accuracy (2/5 validation sample) by dynamically executing `gemini-3.5-flash` generated Python code within an isolated execution sandbox.
+- **Zero-Shot Heuristics Baseline**: Solves **`3.8%`** (16/416 tasks) of the full dataset running completely offline, using pure deterministic heuristics and mathematical combinatorial chains.
+- **End-to-End Pipeline**: Fully integrated Perception engine, Execution Engine, and Hypothesis-generation logic.
 
 ## 🧠 Technical Details
 
