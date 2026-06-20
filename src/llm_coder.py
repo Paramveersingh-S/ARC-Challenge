@@ -36,7 +36,7 @@ def generate_solve_function(examples: list) -> str:
         
         # Use the newer google-genai client formatting with Gemini 3
         response = client.models.generate_content(
-            model='gemini-3-flash',
+            model='gemini-3.5-flash',
             contents=prompt
         )
         code = response.text.strip()
