@@ -1,20 +1,16 @@
 import numpy as np
+import re
 from typing import Optional
 from src.dsl import Hypothesis
 from src.perception import extract_objects
 
 def apply_hypothesis(hyp: Hypothesis, grid: np.ndarray) -> Optional[np.ndarray]:
-    """
-    Execute DSL program represented by hypothesis on a grid.
-    Returns predicted output, or None if hypothesis is inapplicable.
-    """
     result = grid.copy()
     objects = extract_objects(result)
 
     try:
         t = hyp.transform
-        if "recolor" in t:
-            # parse: recolor(from_c, to_c)
+        if "recolor" in t and "map_colors" not in t:
             parts = t.replace("recolor(","").replace(")","").split(",")
             if len(parts) == 2:
                 fc, tc = int(parts[0]), int(parts[1])
@@ -23,6 +19,18 @@ def apply_hypothesis(hyp: Hypothesis, grid: np.ndarray) -> Optional[np.ndarray]:
                 tc = int(parts[0])
                 result[result != 0] = tc
 
+        elif "map_colors" in t:
+            match = re.search(r'map_colors\((.*?)\)', t)
+            if match and match.group(1):
+                mapping = {}
+                for pair in match.group(1).split(","):
+                    k, v = pair.split(":")
+                    mapping[int(k)] = int(v)
+                new_res = result.copy()
+                for k, v in mapping.items():
+                    new_res[grid == k] = v
+                result = new_res
+
         elif "flip_horizontal" in t or "flip_h" in t:
             result = np.fliplr(result)
 
@@ -30,7 +38,7 @@ def apply_hypothesis(hyp: Hypothesis, grid: np.ndarray) -> Optional[np.ndarray]:
             result = np.flipud(result)
 
         elif "rotate_90_cw" in t or "rotate_90" in t:
-            result = np.rot90(result, k=-1) # CW rotation
+            result = np.rot90(result, k=-1)
 
         elif "rotate_180" in t:
             result = np.rot90(result, k=2)
@@ -90,16 +98,13 @@ def apply_hypothesis(hyp: Hypothesis, grid: np.ndarray) -> Optional[np.ndarray]:
                 result[eroded] = 0
 
         elif "sort_rows_by_color" in t:
-            # Sort each row independently based on color values
             result = np.sort(result, axis=1)
 
         elif "mirror_and_append" in t:
-            # Append horizontally mirrored copy to the right
             flipped = np.fliplr(result)
             result = np.concatenate([result, flipped], axis=1)
 
         elif "resize_to" in t:
-            import re
             match = re.search(r'\((\d+),\s*(\d+)\)', t)
             if match:
                 h, w = int(match.group(1)), int(match.group(2))

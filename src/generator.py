@@ -4,12 +4,6 @@ from src.dsl import Hypothesis
 from src.perception import grid_attributes
 
 def generate_hypotheses(examples: List[dict]) -> List[Hypothesis]:
-    """
-    Seed initial hypothesis pool from:
-    1. Generic, parameter-less DSL transformations (always added).
-    2. Structural diff between input/output grids.
-    3. Object-level attribute changes.
-    """
     hyps = []
     hid = 0
 
@@ -39,31 +33,25 @@ def generate_hypotheses(examples: List[dict]) -> List[Hypothesis]:
                 condition="always", transform=f"resize_to({out.shape})", support=0))
             hid += 1
 
-        in_colors  = set(int(v) for v in inp.flatten() if v != in_attrs['bg_color'])
-        out_colors = set(int(v) for v in out.flatten() if v != out_attrs['bg_color'])
-        
-        if in_colors != out_colors:
-            added = out_colors - in_colors
-            removed = in_colors - out_colors
-            if len(added)==1 and len(removed)==1:
+        # Global Color Mapping (deduce full palette mapping from input->output)
+        if inp.shape == out.shape:
+            mapping = {}
+            valid = True
+            for i in range(inp.shape[0]):
+                for j in range(inp.shape[1]):
+                    ic, oc = int(inp[i,j]), int(out[i,j])
+                    if ic != oc:
+                        if ic not in mapping:
+                            mapping[ic] = oc
+                        elif mapping[ic] != oc:
+                            valid = False
+            if valid and mapping:
+                map_str = ",".join(f"{k}:{v}" for k,v in mapping.items())
                 hyps.append(Hypothesis(
-                    id=f"h{hid:03d}",
-                    description=f"recolor {list(removed)[0]} → {list(added)[0]}",
-                    condition=f"color_is({list(removed)[0]})",
-                    transform=f"recolor({list(removed)[0]},{list(added)[0]})",
-                    support=0))
+                    id=f"h{hid:03d}", description=f"map colors {map_str}",
+                    condition="always", transform=f"map_colors({map_str})", support=0))
                 hid += 1
-            elif len(added)==1 and len(removed)==0:
-                # Color everything to the added color
-                hyps.append(Hypothesis(
-                    id=f"h{hid:03d}",
-                    description=f"recolor all to {list(added)[0]}",
-                    condition="always",
-                    transform=f"recolor({list(added)[0]})",
-                    support=0))
-                hid += 1
-
-    # Deduplicate by transform signature
+                
     seen = set()
     unique = []
     for h in hyps:
