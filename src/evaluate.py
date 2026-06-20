@@ -25,17 +25,22 @@ def format_submission(predictions: dict, output_path: str = "submission.json"):
 
 def evaluate_on_training(data_dir: Path, n_tasks: int = 50) -> dict:
     """Self-evaluate before submission. ARC-AGI-2 metric: exact grid match."""
+    # Data loader independent of py-arckit: just reads Kaggle JSON structures.
+    if not data_dir.exists():
+        print(f"Directory {data_dir} not found. Skipping evaluation.")
+        return {"correct": 0, "total": 0, "accuracy": 0.0}
+
     task_files = sorted(data_dir.glob("*.json"))[:n_tasks]
     correct = 0
     total = 0
 
     for tf in task_files:
         task = json.loads(tf.read_text())
-        for test_case in task["test"]:
+        for test_case in task.get("test", []):
             true_out = np.array(test_case["output"])
-            pred = solve_task({"train": task["train"],
+            pred = solve_task({"train": task.get("train", []),
                                "test": [{"input": test_case["input"]}]})
-            if pred.shape == true_out.shape and np.array_equal(pred, true_out):
+            if pred is not None and pred.shape == true_out.shape and np.array_equal(pred, true_out):
                 correct += 1
             total += 1
 

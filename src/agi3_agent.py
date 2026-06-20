@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Dict
 from src.dsl import Hypothesis
 
 class ARC3Agent:
@@ -9,11 +9,12 @@ class ARC3Agent:
     and chooses actions that maximise info gain about the win condition.
     """
 
-    def __init__(self):
+    def __init__(self, max_steps: int = 30):
+        self.max_steps = max_steps
         self.hypotheses: List[Hypothesis] = []
         self.world_model: dict = {}
-        self.action_history: List[Any] = []
-        self.observation_history: List[Any] = []
+        self.action_history: List[Dict[str, Any]] = []
+        self.observation_history: List[dict] = []
         self.goal_hypothesis: Optional[str] = None
 
     def observe(self, obs: dict):
@@ -28,9 +29,6 @@ class ARC3Agent:
     def _seed_goal_hypotheses(self, obs: dict) -> List[Hypothesis]:
         """From first observation, generate candidate win conditions."""
         hyps = []
-        grid = np.array(obs.get("grid", []))
-
-        # Hypothesis classes for interactive envs
         goal_templates = [
             "reach_specific_cell",
             "match_target_pattern",
@@ -60,10 +58,10 @@ class ARC3Agent:
         if "done" in obs:
             self.world_model["done"] = obs["done"]
 
-    def select_action(self, available_actions: List[Any]) -> Any:
+    def select_action(self, available_actions: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
         Choose action with highest expected info gain about goal hypothesis.
-        Falls back to random if no clear signal.
+        First 1/3 of steps strictly maximize information gain (Explore First).
         """
         active_hyps = [h for h in self.hypotheses if not h.falsified]
 
@@ -71,49 +69,51 @@ class ARC3Agent:
             import random
             return random.choice(available_actions) if available_actions else None
 
-        # Score each action by expected disambiguation power
+        current_step = len(self.action_history)
+        explore_only = current_step < (self.max_steps / 3)
+
         scored = []
         for action in available_actions[:20]:  # cap for compute
-            # Simulate expected outcome (simplified)
             predicted_reward = self._predict_reward(action, active_hyps)
             info_gain_score  = self._action_info_gain(action, active_hyps)
-            # Balance: exploit if confident, explore if uncertain
-            confidence = max(h.confidence for h in active_hyps)
-            score = (confidence * predicted_reward +
-                     (1 - confidence) * info_gain_score)
+            
+            if explore_only:
+                score = info_gain_score
+            else:
+                confidence = max(h.confidence for h in active_hyps)
+                score = (confidence * predicted_reward +
+                         (1 - confidence) * info_gain_score)
             scored.append((score, action))
 
         scored.sort(reverse=True, key=lambda x: x[0])
         return scored[0][1]
 
-    def _predict_reward(self, action, hyps: List[Hypothesis]) -> float:
+    def _predict_reward(self, action: Dict[str, Any], hyps: List[Hypothesis]) -> float:
         """Weighted average predicted reward under hypothesis ensemble."""
         total_weight = sum(h.confidence for h in hyps)
         if total_weight == 0: return 0.0
-        # Simplified: high-confidence hypotheses vote on action quality
         return sum(h.confidence * self._hyp_action_score(h, action)
                    for h in hyps) / total_weight
 
-    def _hyp_action_score(self, hyp: Hypothesis, action) -> float:
+    def _hyp_action_score(self, hyp: Hypothesis, action: Dict[str, Any]) -> float:
         """How well does this action align with this hypothesis goal?"""
-        # Domain-specific scoring — extend per environment type
-        if "reach" in hyp.description and hasattr(action, 'direction'):
-            return 0.6  # movement actions favored for reach goals
-        return 0.3      # baseline
+        if "reach" in hyp.description and action.get("type") == "move":
+            return 0.6
+        if "fill" in hyp.description and action.get("type") == "select":
+            return 0.6
+        return 0.3
 
-    def _action_info_gain(self, action, hyps: List[Hypothesis]) -> float:
+    def _action_info_gain(self, action: Dict[str, Any], hyps: List[Hypothesis]) -> float:
         """How much info does this action give us?"""
-        # Novel actions (not tried yet) have higher info gain
         if action not in self.action_history[-5:]:
             return 0.8
         return 0.2
 
-    def update_after_step(self, action, new_obs: dict):
+    def update_after_step(self, action: Dict[str, Any], new_obs: dict):
         """Update beliefs after receiving environment feedback."""
-        reward = new_obs.get("reward", 0)
+        reward = new_obs.get("reward", 0.0)
         self.action_history.append(action)
 
-        # Falsify hypotheses inconsistent with observed reward
         for hyp in self.hypotheses:
             if hyp.falsified: continue
             expected = self._hyp_action_score(hyp, action)
