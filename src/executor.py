@@ -131,9 +131,23 @@ def _apply_single_transform(t: str, grid: np.ndarray, objects: list) -> Optional
     return result
 
 def apply_hypothesis(hyp: Hypothesis, grid: np.ndarray) -> Optional[np.ndarray]:
+    # 1. Sandbox Execution for LLM generated code
+    if "def solve(" in hyp.transform:
+        try:
+            local_scope = {}
+            # Dangerous exec() allows dynamic python execution!
+            exec(hyp.transform, {"np": np}, local_scope)
+            if "solve" in local_scope:
+                out = local_scope["solve"](grid)
+                if isinstance(out, (list, np.ndarray)):
+                    return np.array(out).astype(int)
+        except Exception:
+            return None
+        return None
+
     result = grid.copy()
     try:
-        # Handle combinatoric chains
+        # 2. Handle standard combinatoric chains
         transforms = [t.strip() for t in hyp.transform.split("|")]
         for t in transforms:
             objects = extract_objects(result)

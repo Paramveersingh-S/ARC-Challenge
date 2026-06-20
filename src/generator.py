@@ -2,6 +2,7 @@ from typing import List
 import numpy as np
 from src.dsl import Hypothesis
 from src.perception import grid_attributes
+from src.llm_coder import generate_solve_function
 
 def generate_hypotheses(examples: List[dict]) -> List[Hypothesis]:
     hyps = []
@@ -65,12 +66,11 @@ def generate_hypotheses(examples: List[dict]) -> List[Hypothesis]:
                         condition="always", transform=f"{t} | {mapping_str}", support=0))
                     hid += 1
 
-        # Fast Object-Specific Rules (if shape is same but colors changed slightly)
+        # Fast Object-Specific Rules
         if not shape_changed:
             in_colors = set(int(v) for v in inp.flatten())
             out_colors = set(int(v) for v in out.flatten())
             if len(in_colors) > len(out_colors):
-                # We might have deleted a color/object
                 missing = list(in_colors - out_colors)
                 if len(missing) == 1:
                     hyps.append(Hypothesis(
@@ -80,11 +80,18 @@ def generate_hypotheses(examples: List[dict]) -> List[Hypothesis]:
                     
         # Object bounds logic
         if in_attrs['num_objects'] > 0:
-            # Maybe recolor largest/smallest
             hyps.append(Hypothesis(
                 id=f"h{hid:03d}", description="recolor largest object to output majority",
                 condition="always", transform="recolor_largest_to_majority", support=0))
             hid += 1
+
+    # 3. LLM Code Synthesis Engine (Phase 7)
+    llm_code = generate_solve_function(examples)
+    if llm_code and "def solve(" in llm_code:
+        hyps.append(Hypothesis(
+            id=f"h{hid:03d}", description="LLM Synthesized Python Logic",
+            condition="always", transform=llm_code, support=0))
+        hid += 1
 
     seen = set()
     unique = []
