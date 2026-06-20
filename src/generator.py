@@ -27,13 +27,18 @@ def generate_hypotheses(examples: List[dict]) -> List[Hypothesis]:
         in_attrs  = grid_attributes(inp)
         out_attrs = grid_attributes(out)
 
-        if inp.shape != out.shape:
+        shape_changed = (inp.shape != out.shape)
+        resize_transform = None
+
+        if shape_changed:
+            resize_transform = f"resize_to({out.shape})"
             hyps.append(Hypothesis(
                 id=f"h{hid:03d}", description="output is scaled/cropped version of input",
-                condition="always", transform=f"resize_to({out.shape})", support=0))
+                condition="always", transform=resize_transform, support=0))
             hid += 1
 
         # Global Color Mapping (deduce full palette mapping from input->output)
+        mapping_str = None
         if inp.shape == out.shape:
             mapping = {}
             valid = True
@@ -47,11 +52,40 @@ def generate_hypotheses(examples: List[dict]) -> List[Hypothesis]:
                             valid = False
             if valid and mapping:
                 map_str = ",".join(f"{k}:{v}" for k,v in mapping.items())
+                mapping_str = f"map_colors({map_str})"
                 hyps.append(Hypothesis(
                     id=f"h{hid:03d}", description=f"map colors {map_str}",
-                    condition="always", transform=f"map_colors({map_str})", support=0))
+                    condition="always", transform=mapping_str, support=0))
                 hid += 1
                 
+                # Combinatorial: Map colors AND generic transform
+                for t in ["rotate_90_cw", "flip_horizontal", "flip_vertical"]:
+                    hyps.append(Hypothesis(
+                        id=f"h{hid:03d}", description=f"{t} then map colors",
+                        condition="always", transform=f"{t} | {mapping_str}", support=0))
+                    hid += 1
+
+        # Fast Object-Specific Rules (if shape is same but colors changed slightly)
+        if not shape_changed:
+            in_colors = set(int(v) for v in inp.flatten())
+            out_colors = set(int(v) for v in out.flatten())
+            if len(in_colors) > len(out_colors):
+                # We might have deleted a color/object
+                missing = list(in_colors - out_colors)
+                if len(missing) == 1:
+                    hyps.append(Hypothesis(
+                        id=f"h{hid:03d}", description=f"delete objects of color {missing[0]}",
+                        condition="always", transform=f"delete_color({missing[0]})", support=0))
+                    hid += 1
+                    
+        # Object bounds logic
+        if in_attrs['num_objects'] > 0:
+            # Maybe recolor largest/smallest
+            hyps.append(Hypothesis(
+                id=f"h{hid:03d}", description="recolor largest object to output majority",
+                condition="always", transform="recolor_largest_to_majority", support=0))
+            hid += 1
+
     seen = set()
     unique = []
     for h in hyps:
