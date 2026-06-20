@@ -34,9 +34,9 @@ def generate_solve_function(examples: list) -> str:
         prompt += "Think about the geometric, topological, or color mapping rule. Then write the code.\n"
         prompt += "Return ONLY valid Python code starting with `def solve(input_grid):`. Do not include markdown blocks like ```python."
         
-        # Use the newer google-genai client formatting
+        # Use the newer google-genai client formatting with Gemini 3
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-3-flash',
             contents=prompt
         )
         code = response.text.strip()
